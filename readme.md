@@ -228,6 +228,7 @@ GROUP BY city;
 - HTML email template with weather info
 - Alert logic for severe weather
 - All setup instructions
+- The workflow is designed so only the HTTP Request node needs to be updated when changing cities.
 
 ## Tech Used
 
