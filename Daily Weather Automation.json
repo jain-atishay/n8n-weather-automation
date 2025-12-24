@@ -1,0 +1,215 @@
+{
+  "name": "Daily Weather Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "08c5db2f-f070-4262-aa69-91acce3624e6",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openWeatherMapApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "London"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97bdd367-cb13-4b0c-995f-ab2512bf9ca8",
+      "name": "Fetch Weather Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        208,
+        0
+      ],
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "CYqGCE2qXAvwNOOX",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse weather data and create formatted summary\nconst data = $input.first().json;\n\nconst city = data.name;\nconst temp = Math.round(data.main.temp * 10) / 10;\nconst tempUnit = 'C';\nconst condition = data.weather[0].description;\nconst humidity = data.main.humidity;\nconst windSpeed = Math.round(data.wind.speed * 3.6 * 10) / 10; // Convert m/s to km/h\nconst timestamp = new Date().toISOString();\n\n// Determine alert type\nlet alertType = 'none';\nconst conditionLower = condition.toLowerCase();\n\nif (conditionLower.includes('rain') || \n    conditionLower.includes('snow') || \n    conditionLower.includes('drizzle') || \n    conditionLower.includes('storm') || \n    conditionLower.includes('thunder')) {\n  alertType = 'precipitation';\n} else if (temp > 32) {\n  alertType = 'heat';\n} else if (temp < 0) {\n  alertType = 'frost';\n}\n\n// Create alert message\nconst alertMessages = {\n  'precipitation': 'Alert: Precipitation Expected Today',\n  'heat': 'Alert: High Heat Advisory',\n  'frost': 'Alert: Frost Warning',\n  'none': 'No weather alerts'\n};\n\nconst alertMessage = alertMessages[alertType];\n\n// Format weather summary\nconst summary = `Daily Weather - ${city}\nTemp: ${temp}°${tempUnit}\nCondition: ${condition}\nHumidity: ${humidity}%\nWind: ${windSpeed} km/h\n\n${alertMessage}`;\n\n// Return structured data\nreturn {\n  json: {\n    run_at: timestamp,\n    city: city,\n    temperature: temp,\n    temperature_unit: tempUnit,\n    condition: condition,\n    humidity: humidity,\n    wind_speed: windSpeed,\n    alert_type: alertType,\n    summary: summary,\n    alert_message: alertMessage,\n    raw_response: data\n  }\n};"
+      },
+      "id": "d9d638ed-c809-419f-906a-1870567ed821",
+      "name": "Process Weather Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "weather_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "run_at",
+              "fieldValue": "={{ $json.run_at }}"
+            },
+            {
+              "fieldId": "city",
+              "fieldValue": "={{ $json.city }}"
+            },
+            {
+              "fieldId": "temperature",
+              "fieldValue": "={{ $json.temperature }}"
+            },
+            {
+              "fieldId": "temperature_unit",
+              "fieldValue": "={{ $json.temperature_unit }}"
+            },
+            {
+              "fieldId": "condition",
+              "fieldValue": "={{ $json.condition}}"
+            },
+            {
+              "fieldId": "humidity",
+              "fieldValue": "={{ $json.humidity }}"
+            },
+            {
+              "fieldId": "wind_speed",
+              "fieldValue": "={{ $json.wind_speed }}"
+            },
+            {
+              "fieldId": "alert_type",
+              "fieldValue": "={{ $json.alert_type }}"
+            },
+            {
+              "fieldId": "raw_response",
+              "fieldValue": "={{ JSON.stringify($json.raw_response) }}"
+            }
+          ]
+        }
+      },
+      "id": "db479d20-9877-429d-b350-cf4f459c84f6",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        608,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "CUkfyy0nuvUn6GZn",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "jain.atishay9@gmail.com",
+        "toEmail": "jainatishay@duck.com",
+        "subject": "=Daily Weather for {{ $json.city }} – {{ $now.format('MMMM D, YYYY') }}",
+        "html": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <h2 style=\"color: #2c3e50;\">☀️ Daily Weather - {{ $json.city }}</h2>\n  \n  <div style=\"background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    <p style=\"font-size: 18px; margin: 10px 0;\">\n      <strong>🌡️ Temperature:</strong> {{ $json.temperature }}°{{ $json.temperature_unit }}\n    </p>\n    <p style=\"font-size: 16px; margin: 10px 0;\">\n      <strong>☁️ Condition:</strong> {{ $json.condition }}\n    </p>\n    <p style=\"font-size: 16px; margin: 10px 0;\">\n      <strong>💧 Humidity:</strong> {{ $json.humidity }}%\n    </p>\n    <p style=\"font-size: 16px; margin: 10px 0;\">\n      <strong>💨 Wind:</strong> {{ $json.wind_speed }} km/h\n    </p>\n  </div>\n  \n  {{ $json.alert_type !== 'none' ? '<div style=\"background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;\"><strong>⚠️ Alert:</strong> ' + $json.alert_message + '</div>' : '' }}\n  \n  <p style=\"color: #6c757d; font-size: 12px; margin-top: 30px;\">\n    Weather data from OpenWeatherMap | Automated by n8n\n  </p>\n</div>",
+        "options": {}
+      },
+      "id": "297fb1ba-d4c6-47b5-b356-6164e2353302",
+      "name": "Send Weather Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        0
+      ],
+      "webhookId": "ee72538d-915f-4dc9-8e5d-b3c20494eff6",
+      "credentials": {
+        "smtp": {
+          "id": "OZTUVRidlznZP1Mz",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Weather Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Process Weather Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Send Weather Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "ee8c3827-bc0e-42b4-b8cd-bbfe9264f2fb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1aaeb9240635995e41388c96f6965464b2bf5ebfb6005f35881b968d069dc50"
+  },
+  "id": "gEjbQE22qVIWuA86",
+  "tags": []
+}
